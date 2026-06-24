@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>App Restrictions Viewer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6fa;
+    color: #1f2937;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+    color: white;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .upload-zone {
+    margin-left: auto;
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.15);
+    border: 1px dashed rgba(255,255,255,0.5);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  .upload-zone:hover { background: rgba(255,255,255,0.25); }
+  .upload-zone.dragover { background: rgba(255,255,255,0.35); border-color: white; }
+  input[type=file] { display: none; }
+
+  .stats {
+    background: white;
+    padding: 10px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stat-item { display: flex; align-items: center; gap: 6px; }
+  .stat-label { color: #6b7280; }
+  .stat-value { font-weight: 600; color: #1f2937; }
+  .toolbar { margin-left: auto; display: flex; gap: 8px; }
+  .toolbar button {
+    padding: 6px 12px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .toolbar button:hover { background: #e5e7eb; }
+
+  .main { flex: 1; display: flex; overflow: hidden; }
+  .sidebar {
+    width: 45%;
+    max-width: 600px;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+  }
+  .search-box {
+    padding: 12px;
+    border-bottom: 1px solid #e5e7eb;
+    position: relative;
+  }
+  .search-box input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+  }
+  .search-box input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .match-counter {
+    position: absolute;
+    right: 22px;
+    top: 18px;
+    font-size: 11px;
+    color: #3b82f6;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .search-options {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .search-options label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: #6b7280;
+  }
+  .search-options input[type=checkbox] {
+    cursor: pointer;
+  }
+
+  .tree {
+    flex: 1;
+    overflow: auto;
+    padding: 8px;
+    font-size: 13px;
+  }
+  .node {
+    margin: 1px 0;
+    border-radius: 6px;
+    transition: background 0.1s;
+  }
+  .node-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    cursor: pointer;
+    gap: 6px;
+    border-radius: 6px;
+  }
+  .node-row:hover { background: #f3f4f6; }
+  .node-row.selected { background: #dbeafe; }
+  .node-row.hidden { display: none; }
+  .toggle {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #6b7280;
+    user-select: none;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .toggle.expanded { transform: rotate(90deg); }
+  .toggle.leaf { visibility: hidden; }
+  .level-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .level-0 { background: #ef4444; }
+  .level-1 { background: #f59e0b; }
+  .level-2 { background: #10b981; }
+  .level-3 { background: #3b82f6; }
+  .node-title { flex: 1; font-weight: 500; }
+  .type-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+  }
+  .type-bundle { background: #fef3c7; color: #92400e; }
+  .type-bundle_array { background: #fed7aa; color: #9a3412; }
+  .type-string { background: #dbeafe; color: #1e40af; }
+  .type-bool { background: #d1fae5; color: #065f46; }
+  .type-choice { background: #ede9fe; color: #5b21b6; }
+  .type-integer { background: #fce7f3; color: #9f1239; }
+  .type-multi-select { background: #e0e7ff; color: #3730a3; }
+  .type-hidden { background: #f3f4f6; color: #6b7280; }
+
+  .children {
+    margin-left: 20px;
+    border-left: 1px dashed #d1d5db;
+    padding-left: 4px;
+  }
+  .children.collapsed { display: none; }
+
+  .details {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+    background: #f9fafb;
+  }
+  .empty-state {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    text-align: center;
+    padding: 40px;
+  }
+  .empty-state svg { width: 80px; height: 80px; margin-bottom: 16px; opacity: 0.4; }
+  .empty-state h2 { font-size: 18px; color: #6b7280; margin-bottom: 8px; }
+  .empty-state p { font-size: 13px; max-width: 300px; }
+
+  .detail-card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 16px;
+  }
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .detail-title { font-size: 20px; font-weight: 600; color: #111827; }
+  .detail-key {
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 12px;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+    word-break: break-all;
+  }
+  .detail-row {
+    display: flex;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 13px;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label {
+    width: 140px;
+    color: #6b7280;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .detail-value {
+    flex: 1;
+    color: #1f2937;
+    word-break: break-word;
+  }
+  .detail-value.mono {
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 12px;
+    background: #f9fafb;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .children-list {
+    list-style: none;
+    padding: 0;
+  }
+  .children-list li {
+    padding: 6px 10px;
+    background: #f9fafb;
+    margin: 4px 0;
+    border-radius: 6px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .children-list li:hover { background: #e0e7ff; }
+  .path-breadcrumb {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 12px;
+    font-family: "SF Mono", Monaco, monospace;
+  }
+  .path-breadcrumb span { color: #3b82f6; }
+
+  .highlight { background: #fef08a; padding: 1px 2px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 App Restrictions Viewer</h1>
+  <label class="upload-zone" id="uploadZone">
+    📁 Load JSON file
+    <input type="file" id="fileInput" accept=".json,application/json">
+  </label>
+</header>
+
+<div class="stats" id="statsBar" style="display:none;">
+  <div class="stat-item"><span class="stat-label">Total items:</span><span class="stat-value" id="statTotal">0</span></div>
+  <div class="stat-item"><span class="stat-label">Bundles:</span><span class="stat-value" id="statBundles">0</span></div>
+  <div class="stat-item"><span class="stat-label">Strings:</span><span class="stat-value" id="statStrings">0</span></div>
+  <div class="stat-item"><span class="stat-label">Bools:</span><span class="stat-value" id="statBools">0</span></div>
+  <div class="stat-item"><span class="stat-label">Choices:</span><span class="stat-value" id="statChoices">0</span></div>
+  <div class="toolbar">
+    <button onclick="expandAll()">⊞ Expand all</button>
+    <button onclick="collapseAll()">⊟ Collapse all</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 Search by key, title, or description...">
+      <span id="matchCounter" class="match-counter"></span>
+      <div class="search-options">
+        <label>
+          <input type="checkbox" id="exactMatchOnly">
+          <span>Only show items matching</span>
+        </label>
+      </div>
+    </div>
+    <div class="tree" id="tree"></div>
+  </div>
+  <div class="details" id="details">
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <h2>No file loaded</h2>
+      <p>Click "Load JSON file" above or drag and drop an <code>app_restrictions_consolidated.json</code> file to start exploring.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+let data = [];
+let selectedNode = null;
+
+// --- File loading ---
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+['dragenter','dragover'].forEach(ev => {
+  uploadZone.addEventListener(ev, e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+});
+['dragleave','drop'].forEach(ev => {
+  uploadZone.addEventListener(ev, e => { e.preventDefault(); uploadZone.classList.remove('dragover'); });
+});
+uploadZone.addEventListener('drop', e => {
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      data = JSON.parse(e.target.result);
+      if (!Array.isArray(data)) data = [data];
+      renderTree();
+      updateStats();
+      document.getElementById('statsBar').style.display = 'flex';
+      uploadZone.innerHTML = `✅ ${file.name} <input type="file" id="fileInput" accept=".json,application/json">`;
+      document.getElementById('fileInput').addEventListener('change', ev => {
+        if (ev.target.files[0]) loadFile(ev.target.files[0]);
+      });
+    } catch (err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// --- Stats ---
+function updateStats() {
+  const counts = { total: 0, bundle: 0, bundle_array: 0, string: 0, bool: 0, choice: 0 };
+  function walk(nodes) {
+    nodes.forEach(n => {
+      counts.total++;
+      if (counts[n.type] !== undefined) counts[n.type]++;
+      if (n.children) walk(n.children);
+    });
+  }
+  walk(data);
+  document.getElementById('statTotal').textContent = counts.total;
+  document.getElementById('statBundles').textContent = counts.bundle + counts.bundle_array;
+  document.getElementById('statStrings').textContent = counts.string;
+  document.getElementById('statBools').textContent = counts.bool;
+  document.getElementById('statChoices').textContent = counts.choice;
+}
+
+// --- Tree rendering ---
+function renderTree() {
+  const tree = document.getElementById('tree');
+  tree.innerHTML = '';
+  data.forEach(node => tree.appendChild(buildNode(node, 0, [])));
+}
+
+function buildNode(node, level, path) {
+  const currentPath = [...path, node.title];
+  const div = document.createElement('div');
+  div.className = 'node';
+  div.dataset.key = node.key || '';
+  div.dataset.title = (node.title || '').toLowerCase();
+  div.dataset.desc = (node.description || '').toLowerCase();
+  div.dataset.level = level;
+
+  const row = document.createElement('div');
+  row.className = 'node-row';
+  row.style.paddingLeft = (level * 12 + 8) + 'px';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'toggle' + (node.children && node.children.length ? '' : ' leaf');
+  toggle.textContent = '▶';
+  if (node.children && node.children.length) toggle.classList.add('expanded');
+
+  const dot = document.createElement('span');
+  dot.className = 'level-dot level-' + Math.min(level, 3);
+
+  const title = document.createElement('span');
+  title.className = 'node-title';
+  title.textContent = node.title || node.key;
+
+  const badge = document.createElement('span');
+  badge.className = 'type-badge type-' + (node.type || 'string');
+  badge.textContent = node.type || '?';
+
+  row.appendChild(toggle);
+  row.appendChild(dot);
+  row.appendChild(title);
+  row.appendChild(badge);
+
+  row.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target === toggle) {
+      toggleNode(div, toggle);
+    } else {
+      selectNode(node, currentPath, row);
+    }
+  });
+
+  div.appendChild(row);
+
+  if (node.children && node.children.length) {
+    const childContainer = document.createElement('div');
+    childContainer.className = 'children';
+    node.children.forEach(child => {
+      childContainer.appendChild(buildNode(child, level + 1, currentPath));
+    });
+    div.appendChild(childContainer);
+  }
+
+  return div;
+}
+
+function toggleNode(div, toggle) {
+  const children = div.querySelector('.children');
+  if (!children) return;
+  children.classList.toggle('collapsed');
+  toggle.classList.toggle('expanded');
+}
+
+function selectNode(node, path, rowEl) {
+  document.querySelectorAll('.node-row.selected').forEach(el => el.classList.remove('selected'));
+  rowEl.classList.add('selected');
+  selectedNode = { node, path };
+  renderDetails(node, path);
+}
+
+// --- Details panel ---
+function renderDetails(node, path) {
+  const details = document.getElementById('details');
+  const pathHtml = path.map((p, i) => i === path.length - 1 ? `<span>${escapeHtml(p)}</span>` : escapeHtml(p)).join(' / ');
+
+  let childrenHtml = '';
+  if (node.children && node.children.length) {
+    childrenHtml = `
+      <div class="detail-card">
+        <div class="detail-label" style="margin-bottom:8px;">Children (${node.children.length})</div>
+        <ul class="children-list">
+          ${node.children.map((c, i) => `
+            <li onclick="jumpToChild(${JSON.stringify(c.key).replace(/"/g, '&quot;')})">
+              <span>${escapeHtml(c.title || c.key)}</span>
+              <span class="type-badge type-${c.type || 'string'}">${c.type || '?'}</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  details.innerHTML = `
+    <div class="path-breadcrumb">${pathHtml}</div>
+    <div class="detail-card">
+      <div class="detail-header">
+        <div style="flex:1;">
+          <div class="detail-title">${escapeHtml(node.title || node.key)}</div>
+          <div class="detail-key">${escapeHtml(node.key || '')}</div>
+        </div>
+        <span class="type-badge type-${node.type || 'string'}" style="font-size:12px;padding:4px 10px;">${node.type || '?'}</span>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Description</div>
+        <div class="detail-value">${escapeHtml((node.description || '—').trim())}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Default value</div>
+        <div class="detail-value mono">${escapeHtml(node.default_value || '(empty)')}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Type</div>
+        <div class="detail-value">${escapeHtml(node.type || '—')}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Level (depth)</div>
+        <div class="detail-value">${node.level ?? '—'}</div>
+      </div>
+    </div>
+    ${childrenHtml}
+  `;
+}
+
+function jumpToChild(key) {
+  const nodeEl = document.querySelector(`.node[data-key="${CSS.escape(key)}"]`);
+  if (nodeEl) {
+    // expand parents
+    let parent = nodeEl.parentElement;
+    while (parent && parent.id !== 'tree') {
+      if (parent.classList.contains('children')) parent.classList.remove('collapsed');
+      const prevToggle = parent.previousElementSibling?.querySelector('.toggle');
+      if (prevToggle) prevToggle.classList.add('expanded');
+      parent = parent.parentElement;
+    }
+    nodeEl.querySelector('.node-row').click();
+    nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+// --- Search (with exact match option) ---
+const searchInput = document.getElementById('searchInput');
+const matchCounter = document.getElementById('matchCounter');
+const exactMatchCheckbox = document.getElementById('exactMatchOnly');
+
+function nodeMatches(node, q) {
+  const t = (node.dataset.title || '').toLowerCase();
+  const k = (node.dataset.key || '').toLowerCase();
+  const d = (node.dataset.desc || '').toLowerCase();
+  return t.includes(q) || k.includes(q) || d.includes(q);
+}
+
+function applySearch(nodeEl, q, exactOnly) {
+  // Base case: empty query → restore everything
+  if (!q) {
+    nodeEl.classList.remove('hidden');
+    const children = nodeEl.querySelector(':scope > .children');
+    if (children) {
+      Array.from(children.children).forEach(c => applySearch(c, q, exactOnly));
+    }
+    return true;
+  }
+
+  const selfMatch = nodeMatches(nodeEl, q);
+  let descendantMatch = false;
+
+  const children = nodeEl.querySelector(':scope > .children');
+  if (children) {
+    Array.from(children.children).forEach(child => {
+      if (applySearch(child, q, exactOnly)) descendantMatch = true;
+    });
+  }
+
+  // If exact match only: hide node unless it directly matches
+  // Otherwise: show node if it matches OR has matching descendants
+  const visible = exactOnly ? selfMatch : (selfMatch || descendantMatch);
+  //nodeEl.classList.toggle('hidden', !visible);
+  nodeEl.querySelector(':scope > .node-row').classList.toggle('hidden', !visible);
+
+  // Auto-expand ancestors that contain a match (only in non-exact mode)
+  if (!exactOnly && descendantMatch && children) {
+    children.classList.remove('collapsed');
+    const toggle = nodeEl.querySelector(':scope > .node-row .toggle');
+    if (toggle) toggle.classList.add('expanded');
+  }
+
+  // Highlight matching text in the title
+  const titleEl = nodeEl.querySelector(':scope > .node-row .node-title');
+  if (titleEl) {
+    const raw = nodeEl.dataset.title || '';
+    if (selfMatch && q) {
+      const idx = raw.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        const before = escapeHtml(raw.slice(0, idx));
+        const hit    = escapeHtml(raw.slice(idx, idx + q.length));
+        const after  = escapeHtml(raw.slice(idx + q.length));
+        titleEl.innerHTML = `${before}<span class="highlight">${hit}</span>${after}`;
+      } else {
+        titleEl.textContent = raw;
+      }
+    } else {
+      titleEl.textContent = raw;
+    }
+  }
+
+  return visible;
+}
+
+function countMatches(nodeEl, q) {
+  let n = nodeMatches(nodeEl, q) ? 1 : 0;
+  const children = nodeEl.querySelector(':scope > .children');
+  if (children) {
+    Array.from(children.children).forEach(c => { n += countMatches(c, q); });
+  }
+  return n;
+}
+
+function triggerSearch() {
+  const q = searchInput.value.trim().toLowerCase();
+  const exactOnly = exactMatchCheckbox.checked;
+  let count = 0;
+  document.querySelectorAll('#tree > .node').forEach(root => {
+    if (applySearch(root, q, exactOnly)) {
+      count += countMatches(root, q);
+    }
+  });
+  matchCounter.textContent = q ? `${count} match${count !== 1 ? 'es' : ''}` : '';
+}
+
+searchInput.addEventListener('input', triggerSearch);
+exactMatchCheckbox.addEventListener('change', triggerSearch);
+
+// --- Expand / Collapse ---
+function expandAll() {
+  document.querySelectorAll('.children').forEach(c => c.classList.remove('collapsed'));
+  document.querySelectorAll('.toggle:not(.leaf)').forEach(t => t.classList.add('expanded'));
+}
+function collapseAll() {
+  document.querySelectorAll('.children').forEach(c => c.classList.add('collapsed'));
+  document.querySelectorAll('.toggle').forEach(t => t.classList.remove('expanded'));
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+
+</body>
+</html>
